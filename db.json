@@ -1,0 +1,55 @@
+{
+  "events": [
+    {
+      "id": "uuid-001",
+      "clientName": "Anirban Midya",
+      "email": "anirban@example.com",
+      "category": "Corporate",
+      "date": "2026-09-10",
+      "duration": 8,
+      "baseAmount": 20000,
+      "paymentStatus": "Pending",
+      "invoice": {
+        "taxRate": 18,
+        "discount": 500,
+        "invoiceNumber": "INV-2026-001"
+      },
+      "tasks": [
+        {
+          "id": 1,
+          "text": "Book Venue",
+          "isCompleted": true
+        },
+        {
+          "id": 2,
+          "text": "Coordinate Catering",
+          "isCompleted": false
+        }
+      ]
+    },
+    {
+      "id": "KvNh_3Q4T-s",
+      "clientName": "Usama Bin Laden",
+      "email": "bestpilot911@gmail.com",
+      "phone": "+911 3000 750",
+      "category": "Social Gathering",
+      "date": "2001-09-11",
+      "duration": 0,
+      "baseAmount": 10000,
+      "paymentStatus": "Invoiced",
+      "invoice": {
+        "taxRate": 18,
+        "discount": 0,
+        "invoiceNumber": "INV-2026-002"
+      },
+      "tasks": [
+        {
+          "id": "74cee548-be73-44df-8554-844871afb279",
+          "text": "Arrange plane",
+          "isCompleted": true
+        }
+      ]
+    }
+  ],
+  "$schema": "./node_modules/json-server/schema.json"
+}

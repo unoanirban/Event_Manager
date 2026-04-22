@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function SmartGuide() {
@@ -13,15 +13,28 @@ export default function SmartGuide() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Exclude guide elements
+  // Define the master tour order
+  const TOUR_ROUTES = ['/', '/create', '/registry'];
+
   const isGuideElement = (el) => el.closest('.smart-guide-container');
 
   const scanPage = useCallback(() => {
-    const selectors = 'button, input, select, textarea, a[href], [role="button"], [role="tab"], [data-guide]';
-    const elements = Array.from(document.querySelectorAll(selectors)).filter(el => {
+    const selectors = 'button, input, select, textarea, a[href], [role="button"], [role="tab"]';
+    let elements = Array.from(document.querySelectorAll(selectors)).filter(el => {
       if (isGuideElement(el)) return false;
       const rect = el.getBoundingClientRect();
       return rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden' && !el.disabled;
+    });
+
+    // Sort elements logically: top-to-bottom, then left-to-right
+    elements.sort((a, b) => {
+      const rectA = a.getBoundingClientRect();
+      const rectB = b.getBoundingClientRect();
+      // If elements are roughly on the same line, sort left to right
+      if (Math.abs(rectA.top - rectB.top) > 30) {
+        return rectA.top - rectB.top;
+      }
+      return rectA.left - rectB.left;
     });
 
     const newSteps = elements.map((el, i) => {
@@ -31,7 +44,6 @@ export default function SmartGuide() {
       const tagName = el.tagName.toLowerCase();
       const type = el.type || tagName;
       
-      // Attempt to find a meaningful title
       let title = el.innerText?.trim().slice(0, 30) || el.placeholder || el.name || el.getAttribute('aria-label') || type;
       if (!title) title = 'Interactive Element';
       
@@ -65,27 +77,25 @@ export default function SmartGuide() {
     }
   }, []);
 
-  // When active and route changes, rescan
+  // On route change or activation
   useEffect(() => {
     if (!isActive) return;
+    setSpotlight({ show: false });
+    setSteps([]); // Clear old steps immediately
     const timer = setTimeout(() => {
       scanPage();
-    }, 800); // Wait for page render
+    }, 800);
     return () => clearTimeout(timer);
   }, [isActive, location.pathname, scanPage]);
 
-  // Load progress
+  // Persist state
   useEffect(() => {
     const saved = localStorage.getItem('smartGuideState');
     if (saved) {
       try {
         const { active } = JSON.parse(saved);
-        if (active) {
-          setIsActive(true);
-        }
-      } catch (e) {
-        // ignore JSON parse errors
-      }
+        if (active) setIsActive(true);
+      } catch (e) {}
     }
   }, []);
 
@@ -98,7 +108,7 @@ export default function SmartGuide() {
       setIsActive(false);
       setCurrentIndex(-1);
       setSpotlight({ show: false });
-      setCursor({ ...cursor, show: false });
+      setCursor(c => ({ ...c, show: false }));
     } else {
       setIsActive(true);
     }
@@ -116,22 +126,21 @@ export default function SmartGuide() {
       setTimeout(() => {
         const rect = el.getBoundingClientRect();
         setSpotlight({
-          top: rect.top + window.scrollY,
-          left: rect.left + window.scrollX,
-          width: rect.width,
-          height: rect.height,
+          top: rect.top + window.scrollY - 4,
+          left: rect.left + window.scrollX - 4,
+          width: rect.width + 8,
+          height: rect.height + 8,
           show: true
         });
 
-        // Calculate tooltip pos
         const tooltipWidth = 320;
-        const tooltipHeight = 150;
-        let tTop = rect.top + window.scrollY + rect.height + 16;
+        const tooltipHeight = 160;
+        let tTop = rect.top + window.scrollY + rect.height + 20;
         let tLeft = rect.left + window.scrollX + (rect.width / 2) - (tooltipWidth / 2);
         let pos = 'bottom';
 
         if (tTop + tooltipHeight > window.scrollY + window.innerHeight) {
-          tTop = rect.top + window.scrollY - tooltipHeight - 16;
+          tTop = rect.top + window.scrollY - tooltipHeight - 20;
           pos = 'top';
         }
         if (tLeft < 16) tLeft = 16;
@@ -162,15 +171,10 @@ export default function SmartGuide() {
     }
 
     const rect = el.getBoundingClientRect();
-    const targetX = rect.left + rect.width / 2;
-    const targetY = rect.top + rect.height / 2;
-
-    // Move cursor
-    setCursor({ x: targetX, y: targetY, show: true });
+    setCursor({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, show: true });
     
-    await new Promise(r => setTimeout(r, 600)); // wait for cursor to arrive
+    await new Promise(r => setTimeout(r, 600));
 
-    // Simulate interactions
     if (step.action === 'type') {
       el.focus();
       const text = "Demo Input";
@@ -179,7 +183,7 @@ export default function SmartGuide() {
         el.value += text[i];
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise(r => setTimeout(r, 80));
       }
     } else if (step.action === 'select') {
       el.focus();
@@ -188,29 +192,50 @@ export default function SmartGuide() {
         el.dispatchEvent(new Event('change', { bubbles: true }));
       }
     } else {
-      // Click or Navigate
+      // Visual click effect
+      const originalTransition = el.style.transition;
+      const originalTransform = el.style.transform;
+      el.style.transition = 'transform 0.1s';
+      el.style.transform = 'scale(0.95)';
+      
+      await new Promise(r => setTimeout(r, 150));
+      
+      // Prevent actual navigation or form submit during the tour simulation
+      // to keep the flow strictly linear
+      const preventDefaultHandler = (e) => {
+        if (step.tagName === 'a' || step.type === 'submit') {
+          e.preventDefault();
+        }
+      };
+      el.addEventListener('click', preventDefaultHandler);
       el.focus();
-      await new Promise(r => setTimeout(r, 200));
       el.click();
+      
+      setTimeout(() => el.removeEventListener('click', preventDefaultHandler), 100);
+
+      el.style.transform = originalTransform;
+      el.style.transition = originalTransition;
     }
 
     await new Promise(r => setTimeout(r, 500));
     setCursor(prev => ({ ...prev, show: false }));
     setIsSimulating(false);
     
-    // If it was a navigation, the useEffect will trigger scanPage when route changes
-    // Otherwise, we just go to next
-    if (step.action !== 'navigate' && step.type !== 'submit') {
-      handleNext();
-    }
+    handleNext();
   };
 
   const handleNext = () => {
     if (currentIndex < steps.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      setIsActive(false);
-      setCurrentIndex(-1);
+      // If we finished the page, automatically jump to the next logical page route
+      const currentRouteIdx = TOUR_ROUTES.findIndex(route => location.pathname === route);
+      if (currentRouteIdx !== -1 && currentRouteIdx < TOUR_ROUTES.length - 1) {
+        navigate(TOUR_ROUTES[currentRouteIdx + 1]);
+      } else {
+        setIsActive(false);
+        setCurrentIndex(-1);
+      }
     }
   };
 
@@ -220,17 +245,16 @@ export default function SmartGuide() {
     }
   };
 
-  // Keyboard support
   useEffect(() => {
     const handleKey = (e) => {
-      if (!isActive) return;
+      if (!isActive || isSimulating) return;
       if (e.key === 'ArrowRight') handleNext();
       if (e.key === 'ArrowLeft') handlePrev();
       if (e.key === 'Escape') toggleGuide();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isActive, currentIndex]);
+  }, [isActive, currentIndex, isSimulating]);
 
   return (
     <div className="smart-guide-container">
@@ -238,8 +262,9 @@ export default function SmartGuide() {
         .sg-overlay { position: fixed; inset: 0; z-index: 9990; pointer-events: none; }
         .sg-spotlight {
           position: absolute;
-          box-shadow: 0 0 0 9999px rgba(0,0,0,0.6);
+          box-shadow: 0 0 0 9999px rgba(0,0,0,0.65);
           border-radius: 8px;
+          border: 2px solid #6366f1;
           transition: all 0.4s ease-in-out;
           pointer-events: none;
           z-index: 9991;
@@ -309,7 +334,6 @@ export default function SmartGuide() {
         .sg-btn-secondary { background: #f1f5f9; color: #475569; }
       `}</style>
 
-      {/* Floating Action Button */}
       <button className="sg-fab" onClick={toggleGuide}>
         <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
           <path d="M12 14l9-5-9-5-9 5 9 5z"></path>
@@ -382,15 +406,14 @@ export default function SmartGuide() {
                   className="sg-btn sg-btn-secondary" 
                   style={{ flex: 1 }}
                   onClick={handleNext}
-                  disabled={currentIndex === steps.length - 1 || isSimulating}
+                  disabled={isSimulating}
                 >
-                  Skip
+                  {currentIndex === steps.length - 1 ? 'Next Page' : 'Skip Step'}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Animated Cursor */}
           <svg 
             className="sg-cursor"
             style={{ 

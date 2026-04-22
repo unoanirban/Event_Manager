@@ -113,7 +113,12 @@ const Logistics = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <div 
+          className="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
+          data-tour="invoice-generator"
+          data-tour-title="Invoice Generator"
+          data-tour-desc="Here you can review event costs, adjust tax and discounts, and generate a final printable invoice for the client."
+        >
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold text-gray-800">Invoice Generator</h3>
             <button
@@ -201,7 +206,12 @@ const Logistics = () => {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <div 
+          className="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
+          data-tour="task-checklist"
+          data-tour-title="Task Checklist"
+          data-tour-desc="Keep track of all logistical tasks for this specific event. You can add new tasks, check them off, or delete them as needed."
+        >
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Task Checklist</h3>
 
           <div className="h-3 bg-gray-200 rounded-full overflow-hidden mb-6">

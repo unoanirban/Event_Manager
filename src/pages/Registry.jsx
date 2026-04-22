@@ -41,7 +41,12 @@ const Registry = () => {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-gray-800">Event Registry</h2>
 
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+      <div 
+        className="bg-white p-4 rounded-xl shadow-sm border border-gray-100"
+        data-tour="search-bar"
+        data-tour-title="Search Events"
+        data-tour-desc="You can easily filter your events here by typing the client's name, email, or event category."
+      >
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
           <input
@@ -54,7 +59,12 @@ const Registry = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div 
+        className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+        data-tour="registry-table"
+        data-tour-title="Events Table"
+        data-tour-desc="All your events are listed here. You can click the Edit icon on any row to open the logistics and invoice details for that specific event."
+      >
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">

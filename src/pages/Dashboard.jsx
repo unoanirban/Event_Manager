@@ -47,6 +47,9 @@ const Dashboard = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
+            data-tour="stat-card"
+            data-tour-title={`${label} Overview`}
+            data-tour-desc={`This card displays your current ${label.toLowerCase()}, keeping you updated on essential metrics.`}
           >
             <div className="flex items-center justify-between">
               <div>
@@ -61,7 +64,12 @@ const Dashboard = () => {
         ))}
       </div>
 
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+      <div 
+        className="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
+        data-tour="completion-rate"
+        data-tour-title="Overall Completion Rate"
+        data-tour-desc="This progress bar tracks how many tasks are completed across all your events."
+      >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-800">Completion Rate</h3>
           <span className="text-2xl font-bold text-purple-600">{overallProgress()}%</span>
@@ -76,7 +84,12 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+      <div 
+        className="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
+        data-tour="recent-activity"
+        data-tour-title="Recent Activity Feed"
+        data-tour-desc="Here you can quickly view the latest events created and check their current payment status."
+      >
         <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Activity</h3>
         <div className="space-y-4">
           {recentEvents.length === 0 ? (

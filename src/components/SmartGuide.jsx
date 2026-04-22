@@ -10,6 +10,16 @@ export default function SmartGuide() {
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0, position: 'bottom' });
   const [isSimulating, setIsSimulating] = useState(false);
   
+  // Memory System
+  const [seenElements, setSeenElements] = useState(() => {
+    try {
+      const saved = localStorage.getItem('smartGuideSeen');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -19,7 +29,7 @@ export default function SmartGuide() {
   const isGuideElement = (el) => el.closest('.smart-guide-container');
 
   const scanPage = useCallback(() => {
-    const selectors = 'button, input, select, textarea, a[href], [role="button"], [role="tab"]';
+    const selectors = 'button, input, select, textarea, a[href], [role="button"], [role="tab"], [data-tour]';
     let elements = Array.from(document.querySelectorAll(selectors)).filter(el => {
       if (isGuideElement(el)) return false;
       const rect = el.getBoundingClientRect();
@@ -30,7 +40,6 @@ export default function SmartGuide() {
     elements.sort((a, b) => {
       const rectA = a.getBoundingClientRect();
       const rectB = b.getBoundingClientRect();
-      // If elements are roughly on the same line, sort left to right
       if (Math.abs(rectA.top - rectB.top) > 30) {
         return rectA.top - rectB.top;
       }
@@ -44,29 +53,47 @@ export default function SmartGuide() {
       const tagName = el.tagName.toLowerCase();
       const type = el.type || tagName;
       
-      let title = el.innerText?.trim().slice(0, 30) || el.placeholder || el.name || el.getAttribute('aria-label') || type;
+      // UNIQUE IDENTIFIER for memory system (tagName + text content/name)
+      const elementSignature = `${tagName}-${el.innerText?.trim().slice(0,25) || el.name || el.id || el.getAttribute('data-tour') || i}`;
+      
+      let title = el.getAttribute('data-tour-title') || el.innerText?.trim().slice(0, 30) || el.placeholder || el.name || el.getAttribute('aria-label') || type;
       if (!title) title = 'Interactive Element';
       
       let action = 'click';
-      let description = `Click this ${tagName} to proceed.`;
+      let description = el.getAttribute('data-tour-desc');
       
-      if (tagName === 'input' || tagName === 'textarea') {
-        if (type === 'checkbox' || type === 'radio') {
-          action = 'click';
-          description = `Toggle this ${type}.`;
+      if (!description) {
+        if (tagName === 'input' || tagName === 'textarea') {
+          if (type === 'checkbox' || type === 'radio') {
+            action = 'click';
+            description = `Toggle this ${type}.`;
+          } else {
+            action = 'type';
+            description = `Enter information in this ${type} field.`;
+          }
+        } else if (tagName === 'select') {
+          action = 'select';
+          description = 'Select an option from this dropdown.';
+        } else if (tagName === 'a') {
+          action = 'navigate';
+          description = 'Click this link to navigate.';
+        } else if (el.hasAttribute('data-tour')) {
+          action = 'highlight';
+          description = 'Review this section for more details.';
         } else {
-          action = 'type';
-          description = `Enter information in this ${type} field.`;
+          description = `Click this ${tagName} to proceed.`;
         }
-      } else if (tagName === 'select') {
-        action = 'select';
-        description = 'Select an option from this dropdown.';
-      } else if (tagName === 'a') {
-        action = 'navigate';
-        description = 'Click this link to navigate.';
+      } else {
+        // If explicitly a data-tour element that isn't naturally interactive
+        if (el.hasAttribute('data-tour') && !['button', 'input', 'select', 'textarea', 'a'].includes(tagName)) {
+          action = 'highlight';
+        }
       }
 
-      return { id, targetId: id, title, description, action, tagName, type };
+      return { id, targetId: id, title, description, action, tagName, type, signature: elementSignature };
+    }).filter(step => {
+      // Memory check: Skip if we've seen this exact element in the tour already
+      return !seenElements.has(step.signature);
     });
 
     setSteps(newSteps);
@@ -75,7 +102,7 @@ export default function SmartGuide() {
     } else {
       setSpotlight({ show: false });
     }
-  }, []);
+  }, [seenElements]);
 
   // On route change or activation
   useEffect(() => {
@@ -88,7 +115,7 @@ export default function SmartGuide() {
     return () => clearTimeout(timer);
   }, [isActive, location.pathname, scanPage]);
 
-  // Persist state
+  // Persist State
   useEffect(() => {
     const saved = localStorage.getItem('smartGuideState');
     if (saved) {
@@ -103,6 +130,10 @@ export default function SmartGuide() {
     localStorage.setItem('smartGuideState', JSON.stringify({ active: isActive }));
   }, [isActive]);
 
+  useEffect(() => {
+    localStorage.setItem('smartGuideSeen', JSON.stringify(Array.from(seenElements)));
+  }, [seenElements]);
+
   const toggleGuide = () => {
     if (isActive) {
       setIsActive(false);
@@ -111,6 +142,8 @@ export default function SmartGuide() {
       setCursor(c => ({ ...c, show: false }));
     } else {
       setIsActive(true);
+      setSeenElements(new Set()); // Fresh tour clears memory
+      localStorage.removeItem('smartGuideSeen');
     }
   };
 
@@ -159,6 +192,14 @@ export default function SmartGuide() {
     }
   }, [currentIndex, isActive, updateHighlight]);
 
+  const recordStepSeen = (step) => {
+    setSeenElements(prev => {
+      const next = new Set(prev);
+      next.add(step.signature);
+      return next;
+    });
+  };
+
   const simulateAction = async () => {
     if (currentIndex < 0 || currentIndex >= steps.length) return;
     setIsSimulating(true);
@@ -167,6 +208,15 @@ export default function SmartGuide() {
     
     if (!el) {
       setIsSimulating(false);
+      return handleNext();
+    }
+
+    // Static highlight logic
+    if (step.action === 'highlight') {
+      // Just wait a tiny bit to simulate reading, then next
+      await new Promise(r => setTimeout(r, 600));
+      setIsSimulating(false);
+      recordStepSeen(step);
       return handleNext();
     }
 
@@ -200,8 +250,6 @@ export default function SmartGuide() {
       
       await new Promise(r => setTimeout(r, 150));
       
-      // Prevent actual navigation or form submit during the tour simulation
-      // to keep the flow strictly linear
       const preventDefaultHandler = (e) => {
         if (step.tagName === 'a' || step.type === 'submit') {
           e.preventDefault();
@@ -221,14 +269,18 @@ export default function SmartGuide() {
     setCursor(prev => ({ ...prev, show: false }));
     setIsSimulating(false);
     
+    recordStepSeen(step);
     handleNext();
   };
 
   const handleNext = () => {
+    if (currentIndex >= 0 && currentIndex < steps.length) {
+      recordStepSeen(steps[currentIndex]);
+    }
+
     if (currentIndex < steps.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      // If we finished the page, automatically jump to the next logical page route
       const currentRouteIdx = TOUR_ROUTES.findIndex(route => location.pathname === route);
       if (currentRouteIdx !== -1 && currentRouteIdx < TOUR_ROUTES.length - 1) {
         navigate(TOUR_ROUTES[currentRouteIdx + 1]);
@@ -390,7 +442,7 @@ export default function SmartGuide() {
                   onClick={simulateAction}
                   disabled={isSimulating}
                 >
-                  {isSimulating ? 'Simulating...' : 'Simulate & Next'}
+                  {isSimulating ? 'Simulating...' : (steps[currentIndex].action === 'highlight' ? 'Acknowledge & Next' : 'Simulate & Next')}
                 </button>
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>

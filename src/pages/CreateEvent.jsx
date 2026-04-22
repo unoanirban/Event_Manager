@@ -92,6 +92,8 @@ const CreateEvent = () => {
                 onChange={handleChange}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${errors.clientName ? 'border-red-500' : 'border-gray-300'}`}
                 placeholder="Enter client name"
+                data-tour-title="Client Name Input"
+                data-tour-desc="Start by entering the full name of your client or organization."
               />
               {errors.clientName && <p className="text-red-500 text-sm mt-1">{errors.clientName}</p>}
             </div>
@@ -104,6 +106,8 @@ const CreateEvent = () => {
                 onChange={handleChange}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
                 placeholder="Enter email address"
+                data-tour-title="Client Email"
+                data-tour-desc="Provide a valid email address so the invoice and event updates can be sent successfully."
               />
               {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
             </div>
@@ -131,6 +135,8 @@ const CreateEvent = () => {
                 value={formData.category}
                 onChange={handleChange}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${errors.category ? 'border-red-500' : 'border-gray-300'}`}
+                data-tour-title="Event Category"
+                data-tour-desc="Classifying the event helps you organize your registry later. Choose the most appropriate category."
               >
                 <option value="">Select category</option>
                 {categories.map(cat => (
@@ -180,6 +186,8 @@ const CreateEvent = () => {
                 step="0.01"
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${errors.baseAmount ? 'border-red-500' : 'border-gray-300'}`}
                 placeholder="Enter amount"
+                data-tour-title="Base Amount"
+                data-tour-desc="Enter the initial agreed cost before taxes and discounts. This will be used in the logistics invoice."
               />
               {errors.baseAmount && <p className="text-red-500 text-sm mt-1">{errors.baseAmount}</p>}
             </div>

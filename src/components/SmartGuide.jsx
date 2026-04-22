@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 
 export default function SmartGuide() {
   const [isActive, setIsActive] = useState(false);
+  const [mode, setMode] = useState('manual'); // 'manual' or 'auto'
   const [steps, setSteps] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [spotlight, setSpotlight] = useState({ top: 0, left: 0, width: 0, height: 0, show: false });
@@ -10,56 +11,28 @@ export default function SmartGuide() {
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0, position: 'bottom' });
   const [isSimulating, setIsSimulating] = useState(false);
   
-  // Intelligence Memory Refs
-  const seenSignaturesRef = useRef(new Set());
-  const visitedRoutesRef = useRef(new Set());
-  const unvisitedRoutesRef = useRef(new Set());
-  
   const location = useLocation();
-  const navigate = useNavigate();
 
-  // Load persistence
+  // Shut down tour if user manually navigates to a new page
   useEffect(() => {
-    try {
-      const activeState = localStorage.getItem('sg_active');
-      if (activeState === 'true') setIsActive(true);
-      
-      const seen = JSON.parse(localStorage.getItem('sg_seen') || '[]');
-      if (seen.length > 0) seenSignaturesRef.current = new Set(seen);
-      
-      const visited = JSON.parse(localStorage.getItem('sg_visited') || '[]');
-      if (visited.length > 0) visitedRoutesRef.current = new Set(visited);
-      
-      const unvisited = JSON.parse(localStorage.getItem('sg_unvisited') || '[]');
-      if (unvisited.length > 0) unvisitedRoutesRef.current = new Set(unvisited);
-    } catch {}
-  }, []);
+    if (isActive) {
+      setIsActive(false);
+      setCurrentIndex(-1);
+      setSpotlight({ show: false });
+      setCursor(c => ({ ...c, show: false }));
+      setSteps([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
-  // Exclude guide's own UI
   const isGuideElement = (el) => el.closest('.smart-guide-container');
 
   const scanPage = useCallback(() => {
-    // 1. Crawler Intelligence: Discover Routes dynamically
-    visitedRoutesRef.current.add(location.pathname);
-    localStorage.setItem('sg_visited', JSON.stringify(Array.from(visitedRoutesRef.current)));
-    
-    document.querySelectorAll('a[href]').forEach(link => {
-      let href = link.getAttribute('href');
-      if (href && href.startsWith('/')) {
-        // Clean URL
-        href = href.split('?')[0].split('#')[0];
-        unvisitedRoutesRef.current.add(href);
-      }
-    });
-    localStorage.setItem('sg_unvisited', JSON.stringify(Array.from(unvisitedRoutesRef.current)));
-
-    // 2. DOM Intelligence: Find interactive/context elements in pure DOM order
-    // (DOM order prevents the visual "jumping around" issue)
+    // Gather all interactive or tour-specific elements in strict DOM order
     const selectors = 'h1, h2, h3, button, input, select, textarea, a[href], [role="button"], [role="tab"], [data-tour]';
     let elements = Array.from(document.querySelectorAll(selectors)).filter(el => {
       if (isGuideElement(el)) return false;
       const rect = el.getBoundingClientRect();
-      // Ensure visible
       return rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden' && !el.disabled;
     });
 
@@ -70,12 +43,7 @@ export default function SmartGuide() {
       const tagName = el.tagName.toLowerCase();
       const type = el.type || tagName;
       
-      // Robust Signature Generation (Prevents accidentally skipping blank modules)
       const textContent = el.innerText?.trim() || el.value || el.placeholder || el.name || el.id || el.getAttribute('aria-label') || '';
-      let signature = null;
-      if (textContent.length > 0) {
-        signature = `${tagName}::${el.className}::${textContent.slice(0, 40)}`;
-      }
       
       let title = el.getAttribute('data-tour-title') || textContent.slice(0, 30) || type;
       if (!title) title = 'Interactive Element';
@@ -109,11 +77,7 @@ export default function SmartGuide() {
         }
       }
 
-      return { id, targetId: id, title, description, action, tagName, type, signature };
-    }).filter(step => {
-      // Intelligent Memory: Only skip if we have a strong, highly specific signature match
-      if (step.signature && seenSignaturesRef.current.has(step.signature)) return false;
-      return true;
+      return { id, targetId: id, title, description, action, tagName, type };
     });
 
     setSteps(newSteps);
@@ -122,35 +86,17 @@ export default function SmartGuide() {
     } else {
       setSpotlight({ show: false });
     }
-  }, [location.pathname]);
-
-  // Handle route change
-  useEffect(() => {
-    if (!isActive) return;
-    setSpotlight({ show: false });
-    setSteps([]);
-    const timer = setTimeout(() => scanPage(), 800);
-    return () => clearTimeout(timer);
-  }, [isActive, location.pathname, scanPage]);
+  }, []);
 
   const toggleGuide = () => {
     if (isActive) {
       setIsActive(false);
-      localStorage.setItem('sg_active', 'false');
       setCurrentIndex(-1);
       setSpotlight({ show: false });
       setCursor(c => ({ ...c, show: false }));
     } else {
       setIsActive(true);
-      localStorage.setItem('sg_active', 'true');
-      
-      // Reset intelligent state for a fresh global tour
-      seenSignaturesRef.current = new Set();
-      visitedRoutesRef.current = new Set();
-      unvisitedRoutesRef.current = new Set();
-      localStorage.removeItem('sg_seen');
-      localStorage.removeItem('sg_visited');
-      localStorage.removeItem('sg_unvisited');
+      setTimeout(() => scanPage(), 100);
     }
   };
 
@@ -173,8 +119,8 @@ export default function SmartGuide() {
           show: true
         });
 
-        const tooltipWidth = 320;
-        const tooltipHeight = 160;
+        const tooltipWidth = 340;
+        const tooltipHeight = 180;
         let tTop = rect.top + window.scrollY + rect.height + 24;
         let tLeft = rect.left + window.scrollX + (rect.width / 2) - (tooltipWidth / 2);
         let pos = 'bottom';
@@ -197,7 +143,17 @@ export default function SmartGuide() {
     if (isActive) updateHighlight();
   }, [currentIndex, isActive, updateHighlight]);
 
-  const simulateAction = async () => {
+  const handleNext = useCallback(() => {
+    if (currentIndex < steps.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+    } else {
+      setIsActive(false);
+      setCurrentIndex(-1);
+      alert("Page Tour Complete!");
+    }
+  }, [currentIndex, steps.length]);
+
+  const simulateAction = useCallback(async () => {
     if (currentIndex < 0 || currentIndex >= steps.length) return;
     setIsSimulating(true);
     const step = steps[currentIndex];
@@ -244,6 +200,7 @@ export default function SmartGuide() {
       
       await new Promise(r => setTimeout(r, 150));
       
+      // Crucial: Prevent leaving the page during the tour
       const preventDefaultHandler = (e) => {
         if (step.tagName === 'a' || step.type === 'submit') {
           e.preventDefault();
@@ -263,34 +220,19 @@ export default function SmartGuide() {
     setIsSimulating(false);
     
     handleNext();
-  };
+  }, [currentIndex, steps, handleNext]);
 
-  const handleNext = () => {
-    // Record step in memory
-    if (currentIndex >= 0 && currentIndex < steps.length) {
-      const step = steps[currentIndex];
-      if (step.signature) {
-        seenSignaturesRef.current.add(step.signature);
-        localStorage.setItem('sg_seen', JSON.stringify(Array.from(seenSignaturesRef.current)));
-      }
-    }
+  // Auto-Play Engine
+  useEffect(() => {
+    if (!isActive || isSimulating || currentIndex < 0 || mode !== 'auto') return;
+    
+    // In auto mode, give the user a moment to read, then simulate and advance
+    const timer = setTimeout(() => {
+      simulateAction();
+    }, 2000);
 
-    if (currentIndex < steps.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-    } else {
-      // INTELLIGENCE: Auto-navigate to next discovered route to continue global tour
-      const nextRoute = Array.from(unvisitedRoutesRef.current).find(r => !visitedRoutesRef.current.has(r));
-      
-      if (nextRoute) {
-        navigate(nextRoute);
-      } else {
-        setIsActive(false);
-        localStorage.setItem('sg_active', 'false');
-        setCurrentIndex(-1);
-        alert("Smart Tour Complete! You've successfully explored all available modules.");
-      }
-    }
-  };
+    return () => clearTimeout(timer);
+  }, [isActive, isSimulating, currentIndex, mode, simulateAction]);
 
   const handlePrev = () => {
     if (currentIndex > 0) {
@@ -307,7 +249,7 @@ export default function SmartGuide() {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isActive, currentIndex, isSimulating]);
+  }, [isActive, currentIndex, isSimulating, handleNext]);
 
   return (
     <div className="smart-guide-container">
@@ -412,16 +354,26 @@ export default function SmartGuide() {
               data-pos={tooltipPos.position}
               style={{ top: tooltipPos.top, left: tooltipPos.left }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700, letterSpacing: '0.5px' }}>
                   STEP {currentIndex + 1} OF {steps.length}
                 </span>
-                <button 
-                  onClick={toggleGuide}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
-                >
-                  ✕
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <select 
+                    value={mode}
+                    onChange={(e) => setMode(e.target.value)}
+                    style={{ fontSize: 12, padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', cursor: 'pointer', background: '#f8fafc', color: '#334155', fontWeight: 500 }}
+                  >
+                    <option value="manual">Manual Mode</option>
+                    <option value="auto">Auto-Play</option>
+                  </select>
+                  <button 
+                    onClick={toggleGuide}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '18px' }}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
               
               <h3 style={{ margin: '0 0 8px 0', fontSize: 18, color: '#0f172a', textTransform: 'capitalize' }}>
@@ -436,7 +388,7 @@ export default function SmartGuide() {
                   className="sg-btn sg-btn-primary" 
                   style={{ flex: 1 }}
                   onClick={simulateAction}
-                  disabled={isSimulating}
+                  disabled={isSimulating || mode === 'auto'}
                 >
                   {isSimulating ? 'Simulating...' : (steps[currentIndex].action === 'highlight' ? 'Acknowledge & Next' : 'Simulate & Next')}
                 </button>
@@ -446,7 +398,7 @@ export default function SmartGuide() {
                   className="sg-btn sg-btn-secondary" 
                   style={{ flex: 1 }}
                   onClick={handlePrev}
-                  disabled={currentIndex === 0 || isSimulating}
+                  disabled={currentIndex === 0 || isSimulating || mode === 'auto'}
                 >
                   Previous
                 </button>
@@ -454,9 +406,9 @@ export default function SmartGuide() {
                   className="sg-btn sg-btn-secondary" 
                   style={{ flex: 1 }}
                   onClick={handleNext}
-                  disabled={isSimulating}
+                  disabled={isSimulating || mode === 'auto'}
                 >
-                  {currentIndex === steps.length - 1 ? 'Next Module' : 'Skip Step'}
+                  {currentIndex === steps.length - 1 ? 'Finish Page' : 'Skip Step'}
                 </button>
               </div>
             </div>

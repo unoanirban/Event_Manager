@@ -23,7 +23,7 @@
         {
           "id": 2,
           "text": "Coordinate Catering",
-          "isCompleted": false
+          "isCompleted": true
         }
       ]
     },
@@ -44,9 +44,14 @@
       },
       "tasks": [
         {
-          "id": "74cee548-be73-44df-8554-844871afb279",
-          "text": "Arrange plane",
-          "isCompleted": true
+          "id": "466502bf-5fa3-4fa2-b430-5882437a06d5",
+          "text": "lighting",
+          "isCompleted": false
+        },
+        {
+          "id": "50a3505a-583c-42a5-964e-3c281f7d7e4c",
+          "text": "sound system",
+          "isCompleted": false
         }
       ]
     }

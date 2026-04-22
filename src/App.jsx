@@ -5,11 +5,13 @@ import Dashboard from './pages/Dashboard';
 import CreateEvent from './pages/CreateEvent';
 import Registry from './pages/Registry';
 import Logistics from './pages/Logistics';
+import SmartGuide from './components/SmartGuide';
 
 function App() {
   return (
     <EventProvider>
       <BrowserRouter>
+        <SmartGuide />
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />

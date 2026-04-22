@@ -30,7 +30,11 @@ export default function SmartGuide() {
   const scanPage = useCallback(() => {
     // Gather all interactive or tour-specific elements in strict DOM order
     const selectors = 'h1, h2, h3, button, input, select, textarea, a[href], [role="button"], [role="tab"], [data-tour]';
-    let elements = Array.from(document.querySelectorAll(selectors)).filter(el => {
+    
+    // Restrict scanning to the <main> element so we ignore global Sidebars and Headers
+    const mainContent = document.querySelector('main') || document;
+    
+    let elements = Array.from(mainContent.querySelectorAll(selectors)).filter(el => {
       if (isGuideElement(el)) return false;
       const rect = el.getBoundingClientRect();
       return rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden' && !el.disabled;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function SmartGuide() {
@@ -6,44 +6,61 @@ export default function SmartGuide() {
   const [steps, setSteps] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [spotlight, setSpotlight] = useState({ top: 0, left: 0, width: 0, height: 0, show: false });
-  const [cursor, setCursor] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2, show: false });
+  const [cursor, setCursor] = useState({ x: -100, y: -100, show: false });
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0, position: 'bottom' });
   const [isSimulating, setIsSimulating] = useState(false);
   
-  // Memory System
-  const [seenElements, setSeenElements] = useState(() => {
-    try {
-      const saved = localStorage.getItem('smartGuideSeen');
-      return saved ? new Set(JSON.parse(saved)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
+  // Intelligence Memory Refs
+  const seenSignaturesRef = useRef(new Set());
+  const visitedRoutesRef = useRef(new Set());
+  const unvisitedRoutesRef = useRef(new Set());
   
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Define the master tour order
-  const TOUR_ROUTES = ['/', '/create', '/registry'];
+  // Load persistence
+  useEffect(() => {
+    try {
+      const activeState = localStorage.getItem('sg_active');
+      if (activeState === 'true') setIsActive(true);
+      
+      const seen = JSON.parse(localStorage.getItem('sg_seen') || '[]');
+      if (seen.length > 0) seenSignaturesRef.current = new Set(seen);
+      
+      const visited = JSON.parse(localStorage.getItem('sg_visited') || '[]');
+      if (visited.length > 0) visitedRoutesRef.current = new Set(visited);
+      
+      const unvisited = JSON.parse(localStorage.getItem('sg_unvisited') || '[]');
+      if (unvisited.length > 0) unvisitedRoutesRef.current = new Set(unvisited);
+    } catch {}
+  }, []);
 
+  // Exclude guide's own UI
   const isGuideElement = (el) => el.closest('.smart-guide-container');
 
   const scanPage = useCallback(() => {
-    const selectors = 'button, input, select, textarea, a[href], [role="button"], [role="tab"], [data-tour]';
+    // 1. Crawler Intelligence: Discover Routes dynamically
+    visitedRoutesRef.current.add(location.pathname);
+    localStorage.setItem('sg_visited', JSON.stringify(Array.from(visitedRoutesRef.current)));
+    
+    document.querySelectorAll('a[href]').forEach(link => {
+      let href = link.getAttribute('href');
+      if (href && href.startsWith('/')) {
+        // Clean URL
+        href = href.split('?')[0].split('#')[0];
+        unvisitedRoutesRef.current.add(href);
+      }
+    });
+    localStorage.setItem('sg_unvisited', JSON.stringify(Array.from(unvisitedRoutesRef.current)));
+
+    // 2. DOM Intelligence: Find interactive/context elements in pure DOM order
+    // (DOM order prevents the visual "jumping around" issue)
+    const selectors = 'h1, h2, h3, button, input, select, textarea, a[href], [role="button"], [role="tab"], [data-tour]';
     let elements = Array.from(document.querySelectorAll(selectors)).filter(el => {
       if (isGuideElement(el)) return false;
       const rect = el.getBoundingClientRect();
+      // Ensure visible
       return rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden' && !el.disabled;
-    });
-
-    // Sort elements logically: top-to-bottom, then left-to-right
-    elements.sort((a, b) => {
-      const rectA = a.getBoundingClientRect();
-      const rectB = b.getBoundingClientRect();
-      if (Math.abs(rectA.top - rectB.top) > 30) {
-        return rectA.top - rectB.top;
-      }
-      return rectA.left - rectB.left;
     });
 
     const newSteps = elements.map((el, i) => {
@@ -53,47 +70,50 @@ export default function SmartGuide() {
       const tagName = el.tagName.toLowerCase();
       const type = el.type || tagName;
       
-      // UNIQUE IDENTIFIER for memory system (tagName + text content/name)
-      const elementSignature = `${tagName}-${el.innerText?.trim().slice(0,25) || el.name || el.id || el.getAttribute('data-tour') || i}`;
+      // Robust Signature Generation (Prevents accidentally skipping blank modules)
+      const textContent = el.innerText?.trim() || el.value || el.placeholder || el.name || el.id || el.getAttribute('aria-label') || '';
+      let signature = null;
+      if (textContent.length > 0) {
+        signature = `${tagName}::${el.className}::${textContent.slice(0, 40)}`;
+      }
       
-      let title = el.getAttribute('data-tour-title') || el.innerText?.trim().slice(0, 30) || el.placeholder || el.name || el.getAttribute('aria-label') || type;
+      let title = el.getAttribute('data-tour-title') || textContent.slice(0, 30) || type;
       if (!title) title = 'Interactive Element';
       
       let action = 'click';
       let description = el.getAttribute('data-tour-desc');
       
       if (!description) {
-        if (tagName === 'input' || tagName === 'textarea') {
-          if (type === 'checkbox' || type === 'radio') {
-            action = 'click';
-            description = `Toggle this ${type}.`;
-          } else {
-            action = 'type';
-            description = `Enter information in this ${type} field.`;
-          }
+        if (['h1', 'h2', 'h3'].includes(tagName)) {
+          action = 'highlight';
+          title = 'Section: ' + title;
+          description = 'Pay attention to this section of the application.';
+        } else if (tagName === 'input' || tagName === 'textarea') {
+          action = type === 'checkbox' || type === 'radio' ? 'click' : 'type';
+          description = `Enter or verify information in this ${type} field.`;
         } else if (tagName === 'select') {
           action = 'select';
-          description = 'Select an option from this dropdown.';
+          description = 'Choose an option from the dropdown menu.';
         } else if (tagName === 'a') {
           action = 'navigate';
-          description = 'Click this link to navigate.';
+          description = 'This link navigates to another part of the application.';
         } else if (el.hasAttribute('data-tour')) {
           action = 'highlight';
           description = 'Review this section for more details.';
         } else {
-          description = `Click this ${tagName} to proceed.`;
+          description = `Click this ${tagName} to interact.`;
         }
       } else {
-        // If explicitly a data-tour element that isn't naturally interactive
         if (el.hasAttribute('data-tour') && !['button', 'input', 'select', 'textarea', 'a'].includes(tagName)) {
           action = 'highlight';
         }
       }
 
-      return { id, targetId: id, title, description, action, tagName, type, signature: elementSignature };
+      return { id, targetId: id, title, description, action, tagName, type, signature };
     }).filter(step => {
-      // Memory check: Skip if we've seen this exact element in the tour already
-      return !seenElements.has(step.signature);
+      // Intelligent Memory: Only skip if we have a strong, highly specific signature match
+      if (step.signature && seenSignaturesRef.current.has(step.signature)) return false;
+      return true;
     });
 
     setSteps(newSteps);
@@ -102,48 +122,35 @@ export default function SmartGuide() {
     } else {
       setSpotlight({ show: false });
     }
-  }, [seenElements]);
+  }, [location.pathname]);
 
-  // On route change or activation
+  // Handle route change
   useEffect(() => {
     if (!isActive) return;
     setSpotlight({ show: false });
-    setSteps([]); // Clear old steps immediately
-    const timer = setTimeout(() => {
-      scanPage();
-    }, 800);
+    setSteps([]);
+    const timer = setTimeout(() => scanPage(), 800);
     return () => clearTimeout(timer);
   }, [isActive, location.pathname, scanPage]);
-
-  // Persist State
-  useEffect(() => {
-    const saved = localStorage.getItem('smartGuideState');
-    if (saved) {
-      try {
-        const { active } = JSON.parse(saved);
-        if (active) setIsActive(true);
-      } catch (e) {}
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('smartGuideState', JSON.stringify({ active: isActive }));
-  }, [isActive]);
-
-  useEffect(() => {
-    localStorage.setItem('smartGuideSeen', JSON.stringify(Array.from(seenElements)));
-  }, [seenElements]);
 
   const toggleGuide = () => {
     if (isActive) {
       setIsActive(false);
+      localStorage.setItem('sg_active', 'false');
       setCurrentIndex(-1);
       setSpotlight({ show: false });
       setCursor(c => ({ ...c, show: false }));
     } else {
       setIsActive(true);
-      setSeenElements(new Set()); // Fresh tour clears memory
-      localStorage.removeItem('smartGuideSeen');
+      localStorage.setItem('sg_active', 'true');
+      
+      // Reset intelligent state for a fresh global tour
+      seenSignaturesRef.current = new Set();
+      visitedRoutesRef.current = new Set();
+      unvisitedRoutesRef.current = new Set();
+      localStorage.removeItem('sg_seen');
+      localStorage.removeItem('sg_visited');
+      localStorage.removeItem('sg_unvisited');
     }
   };
 
@@ -159,21 +166,21 @@ export default function SmartGuide() {
       setTimeout(() => {
         const rect = el.getBoundingClientRect();
         setSpotlight({
-          top: rect.top + window.scrollY - 4,
-          left: rect.left + window.scrollX - 4,
-          width: rect.width + 8,
-          height: rect.height + 8,
+          top: rect.top + window.scrollY - 6,
+          left: rect.left + window.scrollX - 6,
+          width: rect.width + 12,
+          height: rect.height + 12,
           show: true
         });
 
         const tooltipWidth = 320;
         const tooltipHeight = 160;
-        let tTop = rect.top + window.scrollY + rect.height + 20;
+        let tTop = rect.top + window.scrollY + rect.height + 24;
         let tLeft = rect.left + window.scrollX + (rect.width / 2) - (tooltipWidth / 2);
         let pos = 'bottom';
 
         if (tTop + tooltipHeight > window.scrollY + window.innerHeight) {
-          tTop = rect.top + window.scrollY - tooltipHeight - 20;
+          tTop = rect.top + window.scrollY - tooltipHeight - 24;
           pos = 'top';
         }
         if (tLeft < 16) tLeft = 16;
@@ -187,18 +194,8 @@ export default function SmartGuide() {
   }, [currentIndex, steps]);
 
   useEffect(() => {
-    if (isActive) {
-      updateHighlight();
-    }
+    if (isActive) updateHighlight();
   }, [currentIndex, isActive, updateHighlight]);
-
-  const recordStepSeen = (step) => {
-    setSeenElements(prev => {
-      const next = new Set(prev);
-      next.add(step.signature);
-      return next;
-    });
-  };
 
   const simulateAction = async () => {
     if (currentIndex < 0 || currentIndex >= steps.length) return;
@@ -211,12 +208,9 @@ export default function SmartGuide() {
       return handleNext();
     }
 
-    // Static highlight logic
     if (step.action === 'highlight') {
-      // Just wait a tiny bit to simulate reading, then next
       await new Promise(r => setTimeout(r, 600));
       setIsSimulating(false);
-      recordStepSeen(step);
       return handleNext();
     }
 
@@ -243,9 +237,9 @@ export default function SmartGuide() {
       }
     } else {
       // Visual click effect
-      const originalTransition = el.style.transition;
-      const originalTransform = el.style.transform;
-      el.style.transition = 'transform 0.1s';
+      const originalTransition = el.style.transition || '';
+      const originalTransform = el.style.transform || '';
+      el.style.transition = 'transform 0.1s ease';
       el.style.transform = 'scale(0.95)';
       
       await new Promise(r => setTimeout(r, 150));
@@ -258,7 +252,6 @@ export default function SmartGuide() {
       el.addEventListener('click', preventDefaultHandler);
       el.focus();
       el.click();
-      
       setTimeout(() => el.removeEventListener('click', preventDefaultHandler), 100);
 
       el.style.transform = originalTransform;
@@ -269,24 +262,32 @@ export default function SmartGuide() {
     setCursor(prev => ({ ...prev, show: false }));
     setIsSimulating(false);
     
-    recordStepSeen(step);
     handleNext();
   };
 
   const handleNext = () => {
+    // Record step in memory
     if (currentIndex >= 0 && currentIndex < steps.length) {
-      recordStepSeen(steps[currentIndex]);
+      const step = steps[currentIndex];
+      if (step.signature) {
+        seenSignaturesRef.current.add(step.signature);
+        localStorage.setItem('sg_seen', JSON.stringify(Array.from(seenSignaturesRef.current)));
+      }
     }
 
     if (currentIndex < steps.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      const currentRouteIdx = TOUR_ROUTES.findIndex(route => location.pathname === route);
-      if (currentRouteIdx !== -1 && currentRouteIdx < TOUR_ROUTES.length - 1) {
-        navigate(TOUR_ROUTES[currentRouteIdx + 1]);
+      // INTELLIGENCE: Auto-navigate to next discovered route to continue global tour
+      const nextRoute = Array.from(unvisitedRoutesRef.current).find(r => !visitedRoutesRef.current.has(r));
+      
+      if (nextRoute) {
+        navigate(nextRoute);
       } else {
         setIsActive(false);
+        localStorage.setItem('sg_active', 'false');
         setCurrentIndex(-1);
+        alert("Smart Tour Complete! You've successfully explored all available modules.");
       }
     }
   };
@@ -333,10 +334,10 @@ export default function SmartGuide() {
         }
         .sg-tooltip {
           position: absolute;
-          width: 320px;
+          width: 340px;
           background: white;
           border-radius: 12px;
-          padding: 20px;
+          padding: 24px;
           box-shadow: 0 10px 40px rgba(0,0,0,0.3);
           z-index: 9995;
           transition: all 0.4s ease-in-out;
@@ -373,7 +374,7 @@ export default function SmartGuide() {
         }
         .sg-fab:hover { transform: scale(1.05); }
         .sg-btn {
-          padding: 8px 16px;
+          padding: 10px 16px;
           border-radius: 6px;
           border: none;
           cursor: pointer;
@@ -400,12 +401,7 @@ export default function SmartGuide() {
             {spotlight.show && (
               <div 
                 className="sg-spotlight"
-                style={{ 
-                  top: spotlight.top, 
-                  left: spotlight.left, 
-                  width: spotlight.width, 
-                  height: spotlight.height 
-                }} 
+                style={{ top: spotlight.top, left: spotlight.left, width: spotlight.width, height: spotlight.height }} 
               />
             )}
           </div>
@@ -417,7 +413,7 @@ export default function SmartGuide() {
               style={{ top: tooltipPos.top, left: tooltipPos.left }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
+                <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700, letterSpacing: '0.5px' }}>
                   STEP {currentIndex + 1} OF {steps.length}
                 </span>
                 <button 
@@ -431,7 +427,7 @@ export default function SmartGuide() {
               <h3 style={{ margin: '0 0 8px 0', fontSize: 18, color: '#0f172a', textTransform: 'capitalize' }}>
                 {steps[currentIndex].title}
               </h3>
-              <p style={{ margin: '0 0 20px 0', fontSize: 14, color: '#475569', lineHeight: 1.5 }}>
+              <p style={{ margin: '0 0 24px 0', fontSize: 14, color: '#475569', lineHeight: 1.6 }}>
                 {steps[currentIndex].description}
               </p>
 
@@ -460,7 +456,7 @@ export default function SmartGuide() {
                   onClick={handleNext}
                   disabled={isSimulating}
                 >
-                  {currentIndex === steps.length - 1 ? 'Next Page' : 'Skip Step'}
+                  {currentIndex === steps.length - 1 ? 'Next Module' : 'Skip Step'}
                 </button>
               </div>
             </div>
